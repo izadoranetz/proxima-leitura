@@ -141,9 +141,9 @@ def login_form():
 
 def create_account_form():
     """Formulário de criação de conta."""
-    st.subheader("Create Account")
-    new_username = st.text_input("Choose Username")
-    new_password = st.text_input("Choose Password", type="password")
+    st.subheader("Criar conta")
+    new_username = st.text_input("Escolha um usuario")
+    new_password = st.text_input("Escolha uma senha", type="password")
     
     if st.button("Criar Conta"):
         if new_username and new_password:  # Em produção, validar e salvar
@@ -252,9 +252,9 @@ def home_page():
         for idx, (_, book) in enumerate(recommendations.iterrows()):
             with cols[idx % 2]:
                 st.write(f"**{book['title']}**")
-                st.write(f"by {book['author']}")
-                st.write(f"Similarity: {book['similarity']:.2f}")
-                if st.button(f"View Details", key=f"book_{idx}"):
+                st.write(f"de {book['author']}")
+                st.write(f"Similaridade: {book['similarity']:.2f}")
+                if st.button(f"Ver detalhes", key=f"book_{idx}"):
                     book_detail_page(book['title'])
 
 def main():
@@ -270,7 +270,7 @@ def main():
     
     if not st.session_state.logged_in:
         st.title("Próxima Leitura 📚")
-        tab1, tab2 = st.tabs(["Login", "Create Account"])
+        tab1, tab2 = st.tabs(["Login", "Criar conta"])
         
         with tab1:
             login_form()

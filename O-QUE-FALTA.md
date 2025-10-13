@@ -2,6 +2,10 @@
 
 ## 🔥 Prioridade Alta
 
+### Funcionalidade
+- [ ] Logout
+- [ ] Persistência das configurações de preferências
+
 ### Sistema de Imagens
 - [ ] Integrar API de imagens de capas de livros (por exemplo, Google Books API ou Open Library API)
 - [ ] Implementar cache de imagens para melhor performance
