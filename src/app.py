@@ -256,44 +256,52 @@ def my_books_page():
 
     ratings_df = load_ratings()
 
-    for bid in st.session_state.saved_books.copy():
-        book = st.session_state.df[st.session_state.df['book_id'] == int(bid)].iloc[0]
-        with st.container():
-            st.write(f"**{book['title']}** — {book['author']}")
-            cols = st.columns([4, 1])
-            with cols[0]:
+    # Display books in a grid of 3 columns
+    saved_books = st.session_state.saved_books.copy()
+    if saved_books:
+        cols = st.columns(3)
+        for idx, bid in enumerate(saved_books):
+            book = st.session_state.df[st.session_state.df['book_id'] == int(bid)].iloc[0]
+            with cols[idx % 3]:
+                st.markdown(f"<div style='border:1px solid #eee; border-radius:10px; padding:0.3px 4px; margin:4px 0; background:#fafafa; width:100%;'>", unsafe_allow_html=True)
+                st.write(f"**{book['title']}** — {book['author']}")
                 st.write(book['genres'])
                 if book['collection']:
                     st.write(f"Collection: {book['collection']}")
-            with cols[1]:
                 if st.button("Ver detalhes", key=f"detail_{bid}"):
                     book_detail_page(book['title'])
-
-            # avaliação do usuário para este livro — garantir estrelas lado a lado
-            existing = ratings_df[(ratings_df['book_id'] == int(bid)) & (ratings_df['user_id'] == user_id)]
-            initial = int(existing.iloc[-1]['rating']) if not existing.empty else 0
-            # criar uma única linha com 6 colunas: label + 5 estrelas
-            star_row = st.columns([2, 1, 1, 1, 1, 1])
-            # usar markdown simples no primeiro para evitar quebras de layout
-            star_row[0].markdown("**Sua avaliação:**")
-            for i in range(1, 6):
-                filled = "★" if i <= initial and initial > 0 else "☆"
-                # cada estrela fica em sua coluna — assim permanecem em linha
-                if star_row[i].button(filled, key=f"star_{bid}_{i}"):
-                    ok = save_or_update_rating(bid, book['title'], int(i), user_id=user_id)
-                    if ok:
-                        st.success(f"Avaliação salva: {i} estrela(s)")
+                # avaliação do usuário para este livro — garantir estrelas lado a lado
+                existing = ratings_df[(ratings_df['book_id'] == int(bid)) & (ratings_df['user_id'] == user_id)]
+                initial = int(existing.iloc[-1]['rating']) if not existing.empty else 0
+                st.markdown("<div style='margin-top:10px; margin-bottom:5px; font-size:20px; font-weight:bold;'>Sua avaliação:</div>", unsafe_allow_html=True)
+                # Render stars in a single row with minimal spacing
+                st.markdown("""
+                    <style>
+                    .star-row button {
+                        margin-right: -8px !important;
+                        padding-left: 6px !important;
+                        padding-right: 6px !important;
+                    }
+                    </style>
+                """, unsafe_allow_html=True)
+                star_cols = st.columns([1,1,1,1,1], gap="small")
+                for i in range(1, 6):
+                    with star_cols[i-1]:
+                        filled = "★" if i <= initial and initial > 0 else "☆"
+                        btn = st.button(filled, key=f"star_{bid}_{i}", help=f"Clique para avaliar {i} estrela(s)")
+                        if btn:
+                            ok = save_or_update_rating(bid, book['title'], int(i), user_id=user_id)
+                            if ok:
+                                st.rerun()
+                            else:
+                                st.error("Erro ao salvar avaliação")
+                if st.button("Remover", key=f"remove_{bid}"):
+                    try:
+                        st.session_state.saved_books.remove(int(bid))
                         st.rerun()
-                    else:
-                        st.error("Erro ao salvar avaliação")
-
-            # botão remover
-            if st.button("Remover", key=f"remove_{bid}"):
-                try:
-                    st.session_state.saved_books.remove(int(bid))
-                    st.rerun()
-                except ValueError:
-                    st.error("Erro ao remover")
+                    except ValueError:
+                        st.error("Erro ao remover")
+                st.markdown("</div>", unsafe_allow_html=True)
 
 def home_page():
     """Página inicial após login."""

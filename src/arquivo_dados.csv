@@ -2,3 +2,6 @@ user_id,book_id,book_title,rating,timestamp
 ana,7,One Hundred Years of Solitude,5,2025-10-18T02:07:59.680890
 ana,14,The Book Thief,5,2025-10-18T02:13:39.276548
 Ana,7,One Hundred Years of Solitude,4,2025-10-18T13:02:21.047731
+Ana,8,Crime and Punishment,5,2025-10-18T14:19:08.388756
+Ana,17,"Thinking, Fast and Slow",3,2025-10-18T14:21:27.630885
+Ana,22,Animal Farm,2,2025-10-18T14:21:29.567655
