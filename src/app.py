@@ -127,6 +127,11 @@ def login_form():
         else:
             st.error("Invalid credentials")
 
+def logout():
+    for k in ['logged_in', 'user_preferences']:
+        st.session_state.pop(k, None)
+    st.rerun()
+
 def create_account_form():
     """Formulário de criação de conta."""
     st.subheader("Criar conta")
@@ -257,6 +262,9 @@ def home_page():
     with st.sidebar:
         st.title("Navegação")
         page = st.radio("Ir para:", ["Home", "Preferências", "Meus Livros", "Explorar"])
+        if st.session_state.get('logged_in'):
+            if st.button("Logout"):
+                logout()
     
     if page == "Preferências":
         preferences_page()
