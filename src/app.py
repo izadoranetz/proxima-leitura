@@ -235,8 +235,6 @@ def book_detail_page(book_title):
     if book['collection']:
         st.write(f"**Collection:** {book['collection']}")
 
-    st.info("Para avaliar este livro, salve-o em 'Meus Livros' primeiro. Use o botão 'Salvar livro' na Home.")
-
     # Mostrar estatísticas do livro (mesmo sem poder avaliar aqui)
     stats = get_book_stats(book['book_id'])
     if stats['count'] > 0:
@@ -245,16 +243,6 @@ def book_detail_page(book_title):
         st.write("" + "★" * avg_round + "☆" * (5 - avg_round))
     else:
         st.write("Ainda sem avaliações.")
-
-    # Oferecer salvar diretamente na página de detalhe também
-    if st.button("Salvar livro em Meus Livros"):
-        bid = int(book['book_id'])
-        if bid not in st.session_state.saved_books:
-            st.session_state.saved_books.append(bid)
-            st.success("Livro salvo em 'Meus Livros'.")
-            st.experimental_rerun()
-        else:
-            st.info("Livro já está em 'Meus Livros'.")
 
 
 def my_books_page():
@@ -295,7 +283,7 @@ def my_books_page():
                     ok = save_or_update_rating(bid, book['title'], int(i), user_id=user_id)
                     if ok:
                         st.success(f"Avaliação salva: {i} estrela(s)")
-                        st.experimental_rerun()
+                        st.rerun()
                     else:
                         st.error("Erro ao salvar avaliação")
 
@@ -303,8 +291,7 @@ def my_books_page():
             if st.button("Remover", key=f"remove_{bid}"):
                 try:
                     st.session_state.saved_books.remove(int(bid))
-                    st.success("Livro removido de Meus Livros")
-                    st.experimental_rerun()
+                    st.rerun()
                 except ValueError:
                     st.error("Erro ao remover")
 
@@ -368,13 +355,13 @@ def home_page():
                     if st.button("Ver detalhes", key=f"explore_detail_{book['book_id']}"):
                         book_detail_page(book['title'])
                 with row[1]:
-                    if st.button("Salvar", key=f"explore_save_{book['book_id']}"):
-                        bid = int(book['book_id'])
-                        if bid not in st.session_state.saved_books:
+                    bid = int(book['book_id'])
+                    saved = bid in st.session_state.saved_books
+                    if st.button("Salvo" if saved else "Salvar", key=f"explore_save_{bid}", disabled=saved):
+                        if not saved:
                             st.session_state.saved_books.append(bid)
                             st.success("Livro salvo em 'Meus Livros'.")
-                        else:
-                            st.info("Livro já está em 'Meus Livros'.")
+                            st.rerun()
         return
     
     # Página inicial (Home)
@@ -417,13 +404,13 @@ def home_page():
                     if st.button(f"Ver detalhes", key=f"book_{idx}"):
                         book_detail_page(book['title'])
                 with row_cols[1]:
-                    if st.button("Salvar", key=f"save_rec_{book['book_id']}"):
-                        bid = int(book['book_id'])
-                        if bid not in st.session_state.saved_books:
+                    bid = int(book['book_id'])
+                    saved = bid in st.session_state.saved_books
+                    if st.button("Salvo" if saved else "Salvar", key=f"save_rec_{bid}", disabled=saved):
+                        if not saved:
                             st.session_state.saved_books.append(bid)
                             st.success("Livro salvo em 'Meus Livros'.")
-                        else:
-                            st.info("Livro já está em 'Meus Livros'.")
+                            st.rerun()
 
 def main():
     """Função principal da aplicação."""
