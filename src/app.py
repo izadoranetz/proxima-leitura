@@ -27,74 +27,20 @@ if 'user_utility_matrix' not in st.session_state:
 
 # Funções de Backend
 def load_and_prepare_data():
-    """Carrega e prepara os dados dos livros, calculando a matriz TF-IDF e similaridade."""
-    # Dados do DataFrame (23 livros)
-    data = {
-        'book_id': list(range(1, 24)),
-        'title': [
-            '1984', 'The Lord of the Rings: The Fellowship of the Ring',
-            'The Lord of the Rings: The Two Towers', 'The Lord of the Rings: The Return of the King',
-            'The Hobbit', 'Pride and Prejudice', 'One Hundred Years of Solitude',
-            'Crime and Punishment', 'The Little Prince', 'Don Quixote',
-            'The Fault in Our Stars', 'Harry Potter and the Philosopher\'s Stone',
-            'The Da Vinci Code', 'The Book Thief', 'The Name of the Wind',
-            'Mindset: The New Psychology of Success', 'Thinking, Fast and Slow',
-            'Sapiens: A Brief History of Humankind', 'The Power of Habit',
-            'The Hitchhiker\'s Guide to the Galaxy', 'Brave New World',
-            'Animal Farm', 'To Kill a Mockingbird'
-        ],
-        'author': [
-            'George Orwell', 'J.R.R. Tolkien', 'J.R.R. Tolkien', 'J.R.R. Tolkien',
-            'J.R.R. Tolkien', 'Jane Austen', 'Gabriel García Márquez',
-            'Fyodor Dostoevsky', 'Antoine de Saint-Exupéry', 'Miguel de Cervantes',
-            'John Green', 'J.K. Rowling', 'Dan Brown', 'Markus Zusak',
-            'Patrick Rothfuss', 'Carol S. Dweck', 'Daniel Kahneman',
-            'Yuval Noah Harari', 'Charles Duhigg', 'Douglas Adams',
-            'Aldous Huxley', 'George Orwell', 'Harper Lee'
-        ],
-        'genres': [
-            'Science Fiction, Dystopian, Political Fiction, Classic',
-            'Fantasy, Adventure, Epic Fantasy, Classic',
-            'Fantasy, Adventure, Epic Fantasy, Classic',
-            'Fantasy, Adventure, Epic Fantasy, Classic',
-            'Fantasy, Adventure, Children\'s Literature, Classic',
-            'Romance, Classic, Historical Fiction, Comedy of Manners',
-            'Magical Realism, Literary Fiction, Historical Fiction, Family Saga',
-            'Psychological Fiction, Philosophical Fiction, Classic, Crime',
-            'Fable, Children\'s Literature, Philosophical Fiction, Fantasy',
-            'Adventure, Satire, Classic, Picaresque',
-            'Romance, Young Adult, Contemporary Fiction, Drama',
-            'Fantasy, Young Adult, Adventure, Mystery',
-            'Thriller, Mystery, Conspiracy Fiction, Adventure',
-            'Historical Fiction, War Fiction, Coming-of-Age, Literary Fiction',
-            'Fantasy, Epic Fantasy, Adventure, Coming-of-Age',
-            'Non-Fiction, Psychology, Self-Help, Personal Development',
-            'Non-Fiction, Psychology, Behavioral Economics, Science',
-            'Non-Fiction, History, Anthropology, Science',
-            'Non-Fiction, Psychology, Self-Help, Business',
-            'Science Fiction, Comedy, Adventure, Satire',
-            'Science Fiction, Dystopian, Philosophical Fiction, Classic',
-            'Political Satire, Allegory, Fable, Classic',
-            'Historical Fiction, Coming-of-Age, Legal Drama, Classic'
-        ],
-        'collection': [
-            None, 'The Lord of the Rings', 'The Lord of the Rings',
-            'The Lord of the Rings', 'The Lord of the Rings', None, None,
-            None, None, None, None, 'Harry Potter', 'Robert Langdon',
-            None, 'The Kingkiller Chronicle', None, None, None, None,
-            'The Hitchhiker\'s Guide to the Galaxy', None, None, None
-        ]
-    }
-    
-    df = pd.DataFrame(data)
-    df['combined_features'] = df['genres'] + ' ' + df['collection'].fillna('') + ' ' + df['author']
-    
-    # Calcular TF-IDF e similaridade
+    """Carrega e prepara os dados dos livros a partir de livros.csv, calculando a matriz TF-IDF e similaridade."""
+    livros_path = Path(__file__).parent / "livros.csv"
+    df = pd.read_csv(livros_path)
+    # Adaptação para manter compatibilidade com o restante do app
+    df = df.rename(columns={"book_title": "title", "genre": "genres"})
+    if "collection" not in df.columns:
+        df["collection"] = None
+    if "author" not in df.columns:
+        df["author"] = ""
+    df['combined_features'] = df['genres'].fillna('') + ' ' + df['author'].fillna('')
     tfidf = TfidfVectorizer(stop_words='english')
     tfidf_matrix = tfidf.fit_transform(df['combined_features'])
     cosine_sim = cosine_similarity(tfidf_matrix)
     cosine_sim_df = pd.DataFrame(cosine_sim, index=df['title'], columns=df['title'])
-    
     return df, cosine_sim_df
 
 def create_utility_matrix(df):
@@ -274,7 +220,6 @@ def my_books_page():
                 existing = ratings_df[(ratings_df['book_id'] == int(bid)) & (ratings_df['user_id'] == user_id)]
                 initial = int(existing.iloc[-1]['rating']) if not existing.empty else 0
                 st.markdown("<div style='margin-top:10px; margin-bottom:5px; font-size:20px; font-weight:bold;'>Sua avaliação:</div>", unsafe_allow_html=True)
-                # Render stars in a single row with minimal spacing
                 st.markdown("""
                     <style>
                     .star-row button {
@@ -288,7 +233,8 @@ def my_books_page():
                 for i in range(1, 6):
                     with star_cols[i-1]:
                         filled = "★" if i <= initial and initial > 0 else "☆"
-                        btn = st.button(filled, key=f"star_{bid}_{i}", help=f"Clique para avaliar {i} estrela(s)")
+                        # O botão agora recebe uma chave única por livro e estrela
+                        btn = st.button(filled, key=f"star_{bid}_{i}_{user_id}", help=f"Clique para avaliar {i} estrela(s)")
                         if btn:
                             ok = save_or_update_rating(bid, book['title'], int(i), user_id=user_id)
                             if ok:
