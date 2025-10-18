@@ -15,6 +15,9 @@ if 'user_preferences' not in st.session_state:
     st.session_state.user_preferences = {}
 if 'reviews' not in st.session_state:
     st.session_state.reviews = pd.DataFrame(columns=['user_id', 'book_id', 'rating'])
+if 'saved_books' not in st.session_state:
+    # lista de book_id salvos pelo usuário (apenas sessão atual)
+    st.session_state.saved_books = []
 if 'df' not in st.session_state:
     st.session_state.df = None
 if 'cosine_sim_df' not in st.session_state:
@@ -227,57 +230,83 @@ def book_detail_page(book_title):
 
     st.title(book['title'])
 
-    # imagem de capa (placeholder)
-    st.image("https://via.placeholder.com/200x300", caption=book['title'])
-
     st.write(f"**Author:** {book['author']}")
     st.write(f"**Genres:** {book['genres']}")
     if book['collection']:
         st.write(f"**Collection:** {book['collection']}")
 
-    # Avaliação: buscar avaliação existente do usuário
-    user_id = st.session_state.get('username', 'anon') or 'anon'
-    ratings_df = load_ratings()
-    existing = ratings_df[(ratings_df['book_id'] == int(book['book_id'])) & (ratings_df['user_id'] == user_id)]
-    initial = int(existing.iloc[-1]['rating']) if not existing.empty else 0
+    st.info("Para avaliar este livro, salve-o em 'Meus Livros' primeiro. Use o botão 'Salvar livro' na Home.")
 
-    rating = st.radio(
-        "Avalie este livro",
-        options=[1, 2, 3, 4, 5],
-        format_func=lambda x: "★" * x + "☆" * (5 - x),
-        index=(initial - 1) if initial > 0 else 0,
-        horizontal=True if hasattr(st, 'radio') else False,
-    )
-
-    if st.button("Salvar avaliação"):
-        ok = save_or_update_rating(book['book_id'], book['title'], int(rating), user_id=user_id)
-        if ok:
-            st.success(f"Avaliação salva: {rating} estrela(s)")
-            # atualizar sessão de reviews leve (opcional)
-            try:
-                st.session_state.reviews = pd.concat([
-                    st.session_state.reviews,
-                    pd.DataFrame({
-                        'user_id': [user_id],
-                        'book_id': [book['book_id']],
-                        'rating': [int(rating)]
-                    })
-                ])
-            except Exception:
-                pass
-            st.experimental_rerun()
-        else:
-            st.error("Erro ao salvar avaliação. Tente novamente.")
-
-    # Mostrar estatísticas do livro
+    # Mostrar estatísticas do livro (mesmo sem poder avaliar aqui)
     stats = get_book_stats(book['book_id'])
     if stats['count'] > 0:
         st.write(f"Média: {stats['avg']} ({stats['count']} avaliações)")
-        # mostrar as estrelas médias arredondadas
         avg_round = int(round(stats['avg']))
         st.write("" + "★" * avg_round + "☆" * (5 - avg_round))
     else:
         st.write("Ainda sem avaliações.")
+
+    # Oferecer salvar diretamente na página de detalhe também
+    if st.button("Salvar livro em Meus Livros"):
+        bid = int(book['book_id'])
+        if bid not in st.session_state.saved_books:
+            st.session_state.saved_books.append(bid)
+            st.success("Livro salvo em 'Meus Livros'.")
+            st.experimental_rerun()
+        else:
+            st.info("Livro já está em 'Meus Livros'.")
+
+
+def my_books_page():
+    """Página 'Meus Livros' onde usuário vê livros salvos e pode avaliar/remover."""
+    st.title("Meus Livros")
+    user_id = st.session_state.get('username', 'anon') or 'anon'
+
+    if not st.session_state.saved_books:
+        st.info("Você ainda não salvou nenhum livro. Vá para Home e salve livros para avaliá-los aqui.")
+        return
+
+    ratings_df = load_ratings()
+
+    for bid in st.session_state.saved_books.copy():
+        book = st.session_state.df[st.session_state.df['book_id'] == int(bid)].iloc[0]
+        with st.container():
+            st.write(f"**{book['title']}** — {book['author']}")
+            cols = st.columns([4, 1])
+            with cols[0]:
+                st.write(book['genres'])
+                if book['collection']:
+                    st.write(f"Collection: {book['collection']}")
+            with cols[1]:
+                if st.button("Ver detalhes", key=f"detail_{bid}"):
+                    book_detail_page(book['title'])
+
+            # avaliação do usuário para este livro — garantir estrelas lado a lado
+            existing = ratings_df[(ratings_df['book_id'] == int(bid)) & (ratings_df['user_id'] == user_id)]
+            initial = int(existing.iloc[-1]['rating']) if not existing.empty else 0
+            # criar uma única linha com 6 colunas: label + 5 estrelas
+            star_row = st.columns([2, 1, 1, 1, 1, 1])
+            # usar markdown simples no primeiro para evitar quebras de layout
+            star_row[0].markdown("**Sua avaliação:**")
+            for i in range(1, 6):
+                filled = "★" if i <= initial and initial > 0 else "☆"
+                # cada estrela fica em sua coluna — assim permanecem em linha
+                if star_row[i].button(filled, key=f"star_{bid}_{i}"):
+                    ok = save_or_update_rating(bid, book['title'], int(i), user_id=user_id)
+                    if ok:
+                        st.success(f"Avaliação salva: {i} estrela(s)")
+                        st.experimental_rerun()
+                    else:
+                        st.error("Erro ao salvar avaliação")
+
+            # botão remover
+            if st.button("Remover", key=f"remove_{bid}"):
+                try:
+                    st.session_state.saved_books.remove(int(bid))
+                    st.success("Livro removido de Meus Livros")
+                    st.experimental_rerun()
+                except ValueError:
+                    st.error("Erro ao remover")
 
 def home_page():
     """Página inicial após login."""
@@ -292,8 +321,7 @@ def home_page():
         preferences_page()
         return
     elif page == "Meus Livros":
-        st.title("My Books")
-        # Implementar visualização de livros do usuário
+        my_books_page()
         return
     elif page == "Explorar":
         st.title("Explorar Livros")
@@ -309,7 +337,17 @@ def home_page():
         popular_books = get_popular_books(st.session_state.df)
         
         for _, book in popular_books.iterrows():
-            st.write(f"**{book['title']}** by {book['author']}")
+            cols = st.columns([4,1])
+            with cols[0]:
+                st.write(f"**{book['title']}** by {book['author']}")
+            with cols[1]:
+                if st.button("Ler", key=f"save_pop_{book['book_id']}"):
+                    bid = int(book['book_id'])
+                    if bid not in st.session_state.saved_books:
+                        st.session_state.saved_books.append(bid)
+                        st.success("Livro salvo em 'Meus Livros'.")
+                    else:
+                        st.info("Livro já está em 'Meus Livros'.")
     else:
         st.subheader("Suas Próximas Leituras 📖")
         favorite_book = st.session_state.user_preferences['favorite_book']
@@ -325,8 +363,18 @@ def home_page():
                 st.write(f"**{book['title']}**")
                 st.write(f"de {book['author']}")
                 st.write(f"Similaridade: {book['similarity']:.2f}")
-                if st.button(f"Ver detalhes", key=f"book_{idx}"):
-                    book_detail_page(book['title'])
+                row_cols = st.columns([1,1])
+                with row_cols[0]:
+                    if st.button(f"Ver detalhes", key=f"book_{idx}"):
+                        book_detail_page(book['title'])
+                with row_cols[1]:
+                    if st.button("Salvar", key=f"save_rec_{book['book_id']}"):
+                        bid = int(book['book_id'])
+                        if bid not in st.session_state.saved_books:
+                            st.session_state.saved_books.append(bid)
+                            st.success("Livro salvo em 'Meus Livros'.")
+                        else:
+                            st.info("Livro já está em 'Meus Livros'.")
 
 def main():
     """Função principal da aplicação."""
