@@ -3,6 +3,8 @@ import pandas as pd
 import numpy as np
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.metrics.pairwise import cosine_similarity
+from pathlib import Path
+from datetime import datetime
 
 # Inicialização do State Management
 if 'logged_in' not in st.session_state:
@@ -104,6 +106,43 @@ def create_utility_matrix(df):
     
     return pd.DataFrame(ratings, index=user_ids, columns=df['book_id'])
 
+
+# --- Ratings persistence (CSV) ---
+RATINGS_CSV = Path(__file__).parent / "arquivo_dados.csv"
+
+def load_ratings():
+    if RATINGS_CSV.exists():
+        try:
+            return pd.read_csv(RATINGS_CSV)
+        except Exception:
+            # se houver problema ao ler, retorna DataFrame vazio com colunas esperadas
+            return pd.DataFrame(columns=["user_id", "book_id", "book_title", "rating", "timestamp"])
+    return pd.DataFrame(columns=["user_id", "book_id", "book_title", "rating", "timestamp"])
+
+def save_or_update_rating(book_id, book_title, rating, user_id="anon"):
+    df = load_ratings()
+    ts = datetime.utcnow().isoformat()
+    # atualizar se houver avaliação anterior do mesmo user para o mesmo book
+    mask = (df["book_id"] == int(book_id)) & (df["user_id"] == user_id)
+    if mask.any():
+        df.loc[mask, ["rating", "timestamp", "book_title"]] = [int(rating), ts, book_title]
+    else:
+        new = pd.DataFrame([{"user_id": user_id, "book_id": int(book_id), "book_title": book_title, "rating": int(rating), "timestamp": ts}])
+        df = pd.concat([df, new], ignore_index=True)
+    # garantir escrita segura simples
+    try:
+        df.to_csv(RATINGS_CSV, index=False)
+        return True
+    except Exception:
+        return False
+
+def get_book_stats(book_id):
+    df = load_ratings()
+    df_book = df[df["book_id"] == int(book_id)]
+    if df_book.empty:
+        return {"avg": None, "count": 0}
+    return {"avg": round(df_book["rating"].astype(float).mean(), 2), "count": len(df_book)}
+
 def get_detailed_recommendations(title, cosine_sim_df, df, k=5):
     """Retorna recomendações detalhadas para um livro."""
     if title not in cosine_sim_df.index:
@@ -183,30 +222,62 @@ def preferences_page():
         st.success("Preferences saved successfully!")
 
 def book_detail_page(book_title):
-    """Página de detalhes do livro."""
+    """Página de detalhes do livro com avaliação por estrelas e persistência em CSV."""
     book = st.session_state.df[st.session_state.df['title'] == book_title].iloc[0]
-    
+
     st.title(book['title'])
-    
-    # Simular imagem de capa
+
+    # imagem de capa (placeholder)
     st.image("https://via.placeholder.com/200x300", caption=book['title'])
-    
+
     st.write(f"**Author:** {book['author']}")
     st.write(f"**Genres:** {book['genres']}")
     if book['collection']:
         st.write(f"**Collection:** {book['collection']}")
-    
-    # Sistema de avaliação
-    rating = st.slider("Rate this book:", 1, 5, 3)
-    if st.button("Submit Rating"):
-        # Adicionar avaliação ao DataFrame de reviews
-        new_review = pd.DataFrame({
-            'user_id': [st.session_state.username],
-            'book_id': [book['book_id']],
-            'rating': [rating]
-        })
-        st.session_state.reviews = pd.concat([st.session_state.reviews, new_review])
-        st.success("Rating submitted successfully!")
+
+    # Avaliação: buscar avaliação existente do usuário
+    user_id = st.session_state.get('username', 'anon') or 'anon'
+    ratings_df = load_ratings()
+    existing = ratings_df[(ratings_df['book_id'] == int(book['book_id'])) & (ratings_df['user_id'] == user_id)]
+    initial = int(existing.iloc[-1]['rating']) if not existing.empty else 0
+
+    rating = st.radio(
+        "Avalie este livro",
+        options=[1, 2, 3, 4, 5],
+        format_func=lambda x: "★" * x + "☆" * (5 - x),
+        index=(initial - 1) if initial > 0 else 0,
+        horizontal=True if hasattr(st, 'radio') else False,
+    )
+
+    if st.button("Salvar avaliação"):
+        ok = save_or_update_rating(book['book_id'], book['title'], int(rating), user_id=user_id)
+        if ok:
+            st.success(f"Avaliação salva: {rating} estrela(s)")
+            # atualizar sessão de reviews leve (opcional)
+            try:
+                st.session_state.reviews = pd.concat([
+                    st.session_state.reviews,
+                    pd.DataFrame({
+                        'user_id': [user_id],
+                        'book_id': [book['book_id']],
+                        'rating': [int(rating)]
+                    })
+                ])
+            except Exception:
+                pass
+            st.experimental_rerun()
+        else:
+            st.error("Erro ao salvar avaliação. Tente novamente.")
+
+    # Mostrar estatísticas do livro
+    stats = get_book_stats(book['book_id'])
+    if stats['count'] > 0:
+        st.write(f"Média: {stats['avg']} ({stats['count']} avaliações)")
+        # mostrar as estrelas médias arredondadas
+        avg_round = int(round(stats['avg']))
+        st.write("" + "★" * avg_round + "☆" * (5 - avg_round))
+    else:
+        st.write("Ainda sem avaliações.")
 
 def home_page():
     """Página inicial após login."""
