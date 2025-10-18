@@ -325,7 +325,56 @@ def home_page():
         return
     elif page == "Explorar":
         st.title("Explorar Livros")
-        # Implementar navegação de livros
+
+        # Campo de busca livre (título, autor ou gênero)
+        q = st.text_input("Buscar livros por título, autor ou gênero:")
+
+        # Extrair géneros únicos para filtro opcional
+        all_genres = set()
+        for genres in st.session_state.df['genres'].str.split(', '):
+            all_genres.update(genres)
+        all_genres = sorted(list(all_genres))
+
+        genre_filter = st.multiselect("Filtrar por gênero (opcional):", options=all_genres)
+
+        # Aplicar filtros
+        df_explore = st.session_state.df.copy()
+        if q:
+            ql = q.lower()
+            mask = df_explore['title'].str.lower().str.contains(ql) | \
+                   df_explore['author'].str.lower().str.contains(ql) | \
+                   df_explore['genres'].str.lower().str.contains(ql)
+            df_explore = df_explore[mask]
+
+        if genre_filter:
+            # filtrar se qualquer um dos gêneros selecionados aparecer na coluna 'genres'
+            mask_g = df_explore['genres'].apply(lambda s: any(g in s for g in genre_filter))
+            df_explore = df_explore[mask_g]
+
+        st.write(f"Resultados: {len(df_explore)} livro(s)")
+
+        # Mostrar livros em grid de 3 colunas
+        cols = st.columns(3)
+        for idx, (_, book) in enumerate(df_explore.iterrows()):
+            with cols[idx % 3]:
+                st.markdown(f"**{book['title']}**")
+                st.write(book['author'])
+                st.write(book['genres'])
+                if book['collection']:
+                    st.write(f"Collection: {book['collection']}")
+
+                row = st.columns([1,1])
+                with row[0]:
+                    if st.button("Ver detalhes", key=f"explore_detail_{book['book_id']}"):
+                        book_detail_page(book['title'])
+                with row[1]:
+                    if st.button("Salvar", key=f"explore_save_{book['book_id']}"):
+                        bid = int(book['book_id'])
+                        if bid not in st.session_state.saved_books:
+                            st.session_state.saved_books.append(bid)
+                            st.success("Livro salvo em 'Meus Livros'.")
+                        else:
+                            st.info("Livro já está em 'Meus Livros'.")
         return
     
     # Página inicial (Home)
