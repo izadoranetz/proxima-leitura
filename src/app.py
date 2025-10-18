@@ -26,23 +26,24 @@ if 'user_utility_matrix' not in st.session_state:
     st.session_state.user_utility_matrix = None
 
 # Funções de Backend
-def get_book_cover_path(isbn):
-    """Retorna o caminho da capa do livro baseado no ISBN."""
+@st.cache_data
+def load_book_cover(isbn):
+    """Carrega a capa do livro em cache baseado no ISBN."""
     covers_dir = Path(__file__).parent / "covers"
     cover_path = covers_dir / f"{isbn}.jpeg"
     if cover_path.exists():
-        return cover_path
+        try:
+            image = Image.open(cover_path)
+            return image
+        except Exception:
+            return None
     return None
 
 def display_book_cover(isbn, width=150):
     """Exibe a capa do livro se existir."""
-    cover_path = get_book_cover_path(isbn)
-    if cover_path:
-        try:
-            image = Image.open(cover_path)
-            st.image(image, width=width)
-        except Exception:
-            st.write("📚")  # Emoji de livro como fallback
+    image = load_book_cover(isbn)
+    if image:
+        st.image(image, width=width)
     else:
         st.write("📚")  # Emoji de livro se não houver capa
 
