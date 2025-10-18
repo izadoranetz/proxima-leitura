@@ -17,6 +17,7 @@ Este projeto implementa um sistema de recomendação de livros que:
 - scikit-learn (TF-IDF e similaridade de cosseno)
 - pandas (Manipulação de dados)
 - numpy (Operações numéricas)
+- PIL (imagens das capas)
 
 ## 📋 Funcionalidades
 
