@@ -6,6 +6,9 @@ from sklearn.metrics.pairwise import cosine_similarity
 from pathlib import Path
 from datetime import datetime
 from PIL import Image
+import io
+import seaborn as sns
+import matplotlib.pyplot as plt
 
 # Inicialização do State Management
 if 'logged_in' not in st.session_state:
@@ -171,17 +174,17 @@ def preferences_page():
     )
     
     favorite_book = st.selectbox(
-        "What's your favorite book?",
+        "Qual é o seu livro favorito?",
         options=st.session_state.df['title'].tolist(),
         index=0
     )
-    
-    if st.button("Save Preferences"):
+
+    if st.button("Salvar Preferências"):
         st.session_state.user_preferences = {
             'favorite_genres': selected_genres,
             'favorite_book': favorite_book
         }
-        st.success("Preferences saved successfully!")
+        st.success("Preferências salvas com sucesso!")
 
 def book_detail_page(book_title):
     """Página de detalhes do livro com avaliação por estrelas e persistência em CSV."""
@@ -194,10 +197,10 @@ def book_detail_page(book_title):
     
     with col2:
         st.title(book['title'])
-        st.write(f"**Author:** {book['author']}")
-        st.write(f"**Genres:** {book['genres']}")
+        st.write(f"**Autor:** {book['author']}")
+        st.write(f"**Gêneros:** {book['genres']}")
         if book['collection']:
-            st.write(f"**Collection:** {book['collection']}")
+            st.write(f"**Coleção:** {book['collection']}")
 
         stats = get_book_stats(book['book_id'])
         if stats['count'] > 0:
@@ -269,7 +272,7 @@ def home_page():
     
     with st.sidebar:
         st.title("Navegação")
-        page = st.radio("Ir para:", ["Home", "Preferências", "Meus Livros", "Explorar"])
+        page = st.radio("Ir para:", ["Home", "Preferências", "Meus Livros", "Explorar", "Matriz de Utilidade"])
         if st.session_state.get('logged_in'):
             if st.button("Logout"):
                 logout()
@@ -334,6 +337,9 @@ def home_page():
                 
                 st.markdown("</div>", unsafe_allow_html=True)
         return
+    elif page == "Matriz de Utilidade":
+        utility_matrix_page()
+        return
     
     if not st.session_state.user_preferences:
         st.info("👋 Complete suas preferências de leitura para receber recomendações personalizadas!")
@@ -389,6 +395,55 @@ def home_page():
                             st.rerun()
                 
                 st.markdown("</div>", unsafe_allow_html=True)
+
+def utility_matrix_page():
+    """Página para visualizar a matriz de utilidade do usuário."""
+    st.title("Matriz de Utilidade")
+
+    if st.session_state.user_utility_matrix is None:
+        st.warning("A matriz de utilidade ainda não foi gerada.")
+        return
+
+    mat = st.session_state.user_utility_matrix
+    st.markdown(f"**Dimensões:** {mat.shape[0]} usuários × {mat.shape[1]} livros")
+
+    # Opções de amostragem
+    sample_mode = st.radio("Modo de visualização:", ["Amostra de usuários", "Amostra de livros", "Matriz completa"], index=0)
+    max_display = st.slider("Tamanho máximo (linhas/colunas) para visualização (heatmap)", min_value=10, max_value=200, value=50, step=10)
+
+    if sample_mode == "Amostra de usuários":
+        n = min(max_display, mat.shape[0])
+        sampled = mat.sample(n=n, random_state=42)
+    elif sample_mode == "Amostra de livros":
+        n = min(max_display, mat.shape[1])
+        sampled = mat.sample(n=n, axis=1, random_state=42)
+    else:
+        # Limitar a exibição se for muito grande
+        if mat.shape[0] * mat.shape[1] > 100000:
+            st.info("Matriz muito grande para renderizar completamente; escolha uma amostra ou aumente o limite.")
+            sampled = mat.sample(n=min(max_display, mat.shape[0]), random_state=42)
+        else:
+            sampled = mat
+
+    st.dataframe(sampled)
+
+    # Heatmap
+    if st.button("Gerar Heatmap"):
+        try:
+            fig, ax = plt.subplots(figsize=(10, 6))
+            sns.heatmap(sampled.astype(float), cmap='viridis', cbar=True, ax=ax)
+            st.pyplot(fig)
+        except Exception as e:
+            st.error(f"Erro ao gerar heatmap: {e}")
+
+    # Download CSV
+    csv_buf = io.BytesIO()
+    try:
+        sampled.to_csv(csv_buf)
+        csv_buf.seek(0)
+        st.download_button(label="Baixar CSV da amostra", data=csv_buf, file_name="utility_matrix_sample.csv", mime="text/csv")
+    except Exception as e:
+        st.error(f"Erro ao preparar download: {e}")
 
 def main():
     """Função principal da aplicação."""
