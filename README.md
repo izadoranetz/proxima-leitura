@@ -4,29 +4,48 @@ Sistema de recomendação de livros baseado em conteúdo (Content-Based Recommen
 
 ## 💡 Sobre o Projeto
 
-Este projeto implementa um sistema de recomendação de livros que:
+Este projeto implementa um sistema de recomendação de livros inteligente que:
 - Utiliza TF-IDF (Term Frequency-Inverse Document Frequency) para análise de características
 - Calcula similaridade entre livros usando similaridade de cosseno
 - Oferece recomendações personalizadas baseadas em gêneros e livros favoritos
-- Possui uma interface amigável construída com Streamlit
+- Possui uma interface moderna e amigável construída com Streamlit
+- Permite gerenciar lista pessoal de livros e avaliações
+- Exibe capas dos livros e informações detalhadas
 
 ## 🔧 Tecnologias Utilizadas
 
 - Python 3.9+
-- Streamlit (Interface web)
+- Streamlit (Interface web interativa)
 - scikit-learn (TF-IDF e similaridade de cosseno)
-- pandas (Manipulação de dados)
-- numpy (Operações numéricas)
-- PIL (imagens das capas)
+- pandas (Manipulação e análise de dados)
+- numpy (Operações numéricas e matrizes)
+- PIL (Processamento de imagens)
+- seaborn (Visualização de dados)
+- matplotlib (Geração de gráficos)
 
 ## 📋 Funcionalidades
 
 - Sistema de login e criação de conta
-- Seleção de gêneros favoritos
-- Recomendações personalizadas de livros
-- Visualização detalhada de livros
-- Sistema de avaliação de livros
-- Matriz de utilidade com 500 usuários simulados
+- Perfil personalizado com preferências de leitura
+  - Seleção de gêneros favoritos
+  - Escolha de livro favorito
+  - Visualização das preferências atuais
+- Sistema de recomendação inteligente
+  - Recomendações personalizadas baseadas em preferências
+  - Exibição de livros populares para novos usuários
+  - Cálculo de similaridade entre livros
+- Gerenciamento de livros
+  - Lista pessoal "Meus Livros"
+  - Sistema de avaliação por estrelas
+  - Visualização de capas e detalhes dos livros
+- Exploração do catálogo
+  - Busca por título, autor ou gênero
+  - Filtros por gênero
+  - Visualização em grid com capas
+- Análise de dados
+  - Matriz de utilidade com 500 usuários simulados
+  - Visualização de heatmap de avaliações
+  - Download de dados em CSV
 
 ## 🚀 Como Executar Localmente
 
@@ -45,7 +64,7 @@ source src/.venv/bin/activate
 
 3. Instale as dependências
 ```bash
-pip install streamlit pandas scikit-learn numpy
+pip install streamlit pandas scikit-learn numpy pillow seaborn matplotlib
 ```
 
 4. Execute a aplicação
@@ -68,15 +87,13 @@ streamlit run src/app.py
 proxima-leitura/
 ├── src/
 │   ├── app.py            # Aplicação principal
-│   └── arquivo_dados.csv # Base de dados dos livros
-├── README.md            # Este arquivo
-└── genres_recommendation.ipynb # Notebook com o desenvolvimento do modelo
+│   ├── livros.csv       # Base de dados dos livros
+│   ├── arquivo_dados.csv # Dados de avaliações dos usuários
+│   └── covers/          # Pasta com as capas dos livros
+│       └── *.jpeg       # Imagens das capas (formato ISBN)
+├── README.md            # Documentação do projeto
+├── Projeto IIA.pdf      # Protótipo em baixa fidelidade da aplicação
+└── genres_recommendation.ipynb # Notebook de desenvolvimento
 ```
 
-## ✨ Funcionalidades Futuras
 
-- [ ] Implementar persistência de dados para usuários
-- [ ] Adicionar mais livros à base de dados
-- [ ] Incluir imagens de capa dos livros
-- [ ] Adicionar sistema de busca
-- [ ] Implementar recomendações colaborativas
