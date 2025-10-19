@@ -50,7 +50,7 @@ def display_book_cover(isbn, width=150):
     if image:
         st.image(image, width=width)
     else:
-        st.write("📚")  # Emoji de livro se não houver capa
+        st.write("📚")
 
 
 def load_and_prepare_data():
@@ -139,21 +139,188 @@ def get_book_stats(book_id):
     }
 
 
-def get_detailed_recommendations(title, cosine_sim_df, df, k=5):
-    """Retorna recomendações detalhadas para um livro."""
+def get_user_rated_books(user_id):
+    """Retorna os IDs dos livros avaliados pelo usuário."""
+    ratings_df = load_ratings()
+    user_ratings = ratings_df[ratings_df["user_id"] == user_id]
+    return set(user_ratings["book_id"].astype(int).tolist())
+
+
+def get_hybrid_recommendations(user_id, df, cosine_sim_df, k=10, content_weight=0.5):
+    """
+    Sistema híbrido de recomendação que combina:
+    1. Filtragem baseada em conteúdo (similaridade de livros)
+    2. Preferências do usuário (avaliações anteriores)
+    3. Filtra livros já avaliados
+    
+    content_weight: peso da similaridade de conteúdo (0-1)
+    """
+    ratings_df = load_ratings()
+    user_ratings = ratings_df[ratings_df["user_id"] == user_id]
+    
+    # Livros já avaliados (não devem aparecer nas recomendações)
+    rated_book_ids = set(user_ratings["book_id"].astype(int).tolist())
+    
+    if user_ratings.empty:
+        # Se usuário não tem avaliações, retorna livros populares não avaliados
+        return get_popular_books(df, n=k, exclude_ids=rated_book_ids)
+    
+    # Calcula score baseado em conteúdo
+    content_scores = {}
+    
+    # Para cada livro avaliado positivamente (rating >= 4)
+    high_rated = user_ratings[user_ratings["rating"] >= 4]
+    
+    for _, rating_row in high_rated.iterrows():
+        book_id = int(rating_row["book_id"])
+        rating = float(rating_row["rating"])
+        
+        # Encontra o título do livro
+        book_info = df[df["book_id"] == book_id]
+        if book_info.empty:
+            continue
+            
+        book_title = book_info.iloc[0]["title"]
+        
+        # Se o livro está na matriz de similaridade
+        if book_title in cosine_sim_df.index:
+            similarities = cosine_sim_df[book_title]
+            
+            # Pondera similaridade pela avaliação do usuário
+            weight = (rating / 5.0)  # Normaliza para 0-1
+            
+            for similar_title, sim_score in similarities.items():
+                # Pega o book_id do título similar
+                similar_book = df[df["title"] == similar_title]
+                if similar_book.empty:
+                    continue
+                    
+                similar_book_id = int(similar_book.iloc[0]["book_id"])
+                
+                # Não recomenda livros já avaliados
+                if similar_book_id in rated_book_ids:
+                    continue
+                
+                # Acumula scores ponderados
+                if similar_book_id not in content_scores:
+                    content_scores[similar_book_id] = 0
+                content_scores[similar_book_id] += sim_score * weight
+    
+    # Calcula score baseado em preferências de gênero
+    preference_scores = {}
+    
+    # Média de rating por gênero do usuário
+    genre_preferences = {}
+    for _, rating_row in user_ratings.iterrows():
+        book_id = int(rating_row["book_id"])
+        rating = float(rating_row["rating"])
+        
+        book_info = df[df["book_id"] == book_id]
+        if book_info.empty:
+            continue
+            
+        genres = book_info.iloc[0]["genres"]
+        if pd.isna(genres):
+            continue
+            
+        for genre in str(genres).split(", "):
+            genre = genre.strip()
+            if genre not in genre_preferences:
+                genre_preferences[genre] = []
+            genre_preferences[genre].append(rating)
+    
+    # Calcula média por gênero
+    for genre in genre_preferences:
+        genre_preferences[genre] = np.mean(genre_preferences[genre])
+    
+    # Score de preferência para livros não avaliados
+    for _, book in df.iterrows():
+        book_id = int(book["book_id"])
+        
+        if book_id in rated_book_ids:
+            continue
+            
+        if pd.isna(book["genres"]):
+            continue
+            
+        book_genres = str(book["genres"]).split(", ")
+        pref_score = 0
+        matching_genres = 0
+        
+        for genre in book_genres:
+            genre = genre.strip()
+            if genre in genre_preferences:
+                pref_score += genre_preferences[genre]
+                matching_genres += 1
+        
+        if matching_genres > 0:
+            preference_scores[book_id] = pref_score / matching_genres
+    
+    # Combina scores (híbrido)
+    final_scores = {}
+    all_book_ids = set(content_scores.keys()) | set(preference_scores.keys())
+    
+    for book_id in all_book_ids:
+        content_score = content_scores.get(book_id, 0)
+        preference_score = preference_scores.get(book_id, 0)
+        
+        # Normaliza preference_score para escala 0-1
+        if preference_score > 0:
+            preference_score = preference_score / 5.0
+        
+        # Combina com pesos
+        final_scores[book_id] = (
+            content_weight * content_score + 
+            (1 - content_weight) * preference_score
+        )
+    
+    # Ordena por score
+    sorted_recommendations = sorted(
+        final_scores.items(), 
+        key=lambda x: x[1], 
+        reverse=True
+    )
+    
+    # Retorna top K
+    top_book_ids = [book_id for book_id, _ in sorted_recommendations[:k]]
+    recommendations = df[df["book_id"].isin(top_book_ids)].copy()
+    
+    # Adiciona score final
+    recommendations["recommendation_score"] = recommendations["book_id"].map(
+        dict(sorted_recommendations)
+    )
+    
+    return recommendations.sort_values("recommendation_score", ascending=False)
+
+
+def get_detailed_recommendations(title, cosine_sim_df, df, k=5, exclude_ids=None):
+    """Retorna recomendações detalhadas para um livro, excluindo IDs especificados."""
+    if exclude_ids is None:
+        exclude_ids = set()
+    
     if title not in cosine_sim_df.index:
         return pd.DataFrame()
+    
     sim_scores = cosine_sim_df[title].sort_values(ascending=False)
     sim_scores = sim_scores.drop(title)
-    recommended_titles = sim_scores.head(k)
-    recommendations = df[df["title"].isin(recommended_titles.index)].copy()
-    recommendations["similarity"] = recommended_titles.values
-    return recommendations.sort_values("similarity", ascending=False)
+    
+    # Filtra livros já avaliados
+    recommendations = df[df["title"].isin(sim_scores.index)].copy()
+    recommendations = recommendations[~recommendations["book_id"].isin(exclude_ids)]
+    
+    # Adiciona similaridade
+    recommendations["similarity"] = recommendations["title"].map(sim_scores)
+    
+    return recommendations.sort_values("similarity", ascending=False).head(k)
 
 
-def get_popular_books(df, n=5):
-    """Retorna os livros mais populares baseado em gêneros clássicos."""
+def get_popular_books(df, n=5, exclude_ids=None):
+    """Retorna os livros mais populares baseado em gêneros clássicos, excluindo IDs."""
+    if exclude_ids is None:
+        exclude_ids = set()
+    
     classic_books = df[df["genres"].str.contains("Classic", case=False, na=False)]
+    classic_books = classic_books[~classic_books["book_id"].isin(exclude_ids)]
     return classic_books.head(n)
 
 
@@ -197,7 +364,6 @@ def preferences_page():
     """Página de preferências do usuário."""
     st.title("Suas Preferências de Leitura")
 
-    # Mostrar preferências salvas se existirem
     if st.session_state.user_preferences:
         st.subheader("Suas Preferências Atuais")
         st.write("**Gêneros favoritos:**")
@@ -285,7 +451,6 @@ def my_books_page():
                     unsafe_allow_html=True,
                 )
 
-                # Exibir capa
                 display_book_cover(book["isbn"], width=150)
 
                 st.write(f"**{book['title']}**")
@@ -428,68 +593,79 @@ def home_page():
         utility_matrix_page()
         return
 
-    if not st.session_state.user_preferences:
-        if not st.session_state.user_preferences:
-            st.info(
-                "👋 Complete suas preferências de leitura para receber recomendações personalizadas!"
+    # Página Home - Recomendações
+    user_id = st.session_state.get("username", "anon") or "anon"
+    rated_books = get_user_rated_books(user_id)
+    
+    # Mostra estatísticas do usuário
+    if rated_books:
+        st.info(f"📊 Você já avaliou {len(rated_books)} livro(s)")
+    
+    # Sistema de recomendação inteligente
+    st.subheader("Suas Próximas Leituras Recomendadas 📖")
+    
+    # Slider para ajustar peso do algoritmo
+    with st.expander("⚙️ Configurações de Recomendação"):
+        content_weight = st.slider(
+            "Peso da similaridade de conteúdo vs preferências pessoais",
+            min_value=0.0,
+            max_value=1.0,
+            value=0.5,
+            step=0.1,
+            help="0 = apenas preferências, 1 = apenas similaridade de conteúdo"
+        )
+    
+    recommendations = get_hybrid_recommendations(
+        user_id, 
+        st.session_state.df, 
+        st.session_state.cosine_sim_df,
+        k=9,
+        content_weight=content_weight
+    )
+
+    if recommendations.empty:
+        st.info(
+            "👋 Avalie alguns livros em 'Meus Livros' para receber recomendações personalizadas!"
+        )
+        st.subheader("Livros Populares para Começar")
+        recommendations = get_popular_books(st.session_state.df, n=9, exclude_ids=rated_books)
+
+    cols = st.columns(3)
+    for idx, (_, book) in enumerate(recommendations.iterrows()):
+        with cols[idx % 3]:
+            st.markdown(
+                f"<div style='border:1px solid #eee; border-radius:10px; padding:10px; margin:4px 0; background:#fafafa;'>",
+                unsafe_allow_html=True,
             )
+
+            display_book_cover(book["isbn"], width=150)
+
+            st.write(f"**{book['title']}**")
+            st.write(f"*{book['author']}*")
             
+            # Mostra score se disponível
+            if "recommendation_score" in book and pd.notna(book["recommendation_score"]):
+                score_pct = int(book["recommendation_score"] * 100)
+                st.write(f"💡 Match: {score_pct}%")
 
-        st.subheader("Livros Populares")
-        popular_books = get_popular_books(st.session_state.df)
-
-        cols = st.columns(5)
-        for idx, (_, book) in enumerate(popular_books.iterrows()):
-            with cols[idx % 5]:
-                display_book_cover(book["isbn"], width=120)
-                st.write(f"**{book['title']}**")
-                st.write(f"*{book['author']}*")
-                if st.button("Ler", key=f"save_pop_{book['book_id']}"):
-                    bid = int(book["book_id"])
-                    if bid not in st.session_state.saved_books:
+            row_cols = st.columns([1, 1])
+            with row_cols[0]:
+                if st.button(f"Ver detalhes", key=f"book_{idx}"):
+                    book_detail_page(book["title"])
+            with row_cols[1]:
+                bid = int(book["book_id"])
+                saved = bid in st.session_state.saved_books
+                if st.button(
+                    "Salvo" if saved else "Salvar",
+                    key=f"save_rec_{bid}",
+                    disabled=saved,
+                ):
+                    if not saved:
                         st.session_state.saved_books.append(bid)
                         st.success("Livro salvo!")
-                    else:
-                        st.info("Já está salvo!")
-    else:
-        st.subheader("Suas Próximas Leituras 📖")
-        favorite_book = st.session_state.user_preferences["favorite_book"]
-        recommendations = get_detailed_recommendations(
-            favorite_book, st.session_state.cosine_sim_df, st.session_state.df
-        )
+                        st.rerun()
 
-        cols = st.columns(3)
-        for idx, (_, book) in enumerate(recommendations.iterrows()):
-            with cols[idx % 3]:
-                st.markdown(
-                    f"<div style='border:1px solid #eee; border-radius:10px; padding:10px; margin:4px 0; background:#fafafa;'>",
-                    unsafe_allow_html=True,
-                )
-
-                display_book_cover(book["isbn"], width=150)
-
-                st.write(f"**{book['title']}**")
-                st.write(f"*{book['author']}*")
-                st.write(f"Similaridade: {book['similarity']:.2f}")
-
-                row_cols = st.columns([1, 1])
-                with row_cols[0]:
-                    if st.button(f"Ver detalhes", key=f"book_{idx}"):
-                        book_detail_page(book["title"])
-                with row_cols[1]:
-                    bid = int(book["book_id"])
-                    saved = bid in st.session_state.saved_books
-                    if st.button(
-                        "Salvo" if saved else "Salvar",
-                        key=f"save_rec_{bid}",
-                        disabled=saved,
-                    ):
-                        if not saved:
-                            st.session_state.saved_books.append(bid)
-                            st.success("Livro salvo!")
-                            st.rerun()
-
-                st.markdown("</div>", unsafe_allow_html=True)
+            st.markdown("</div>", unsafe_allow_html=True)
 
 
 def utility_matrix_page():
@@ -503,7 +679,6 @@ def utility_matrix_page():
     mat = st.session_state.user_utility_matrix
     st.markdown(f"**Dimensões:** {mat.shape[0]} usuários × {mat.shape[1]} livros")
 
-    # Opções de amostragem
     sample_mode = st.radio(
         "Modo de visualização:",
         ["Amostra de usuários", "Amostra de livros", "Matriz completa"],
@@ -524,7 +699,6 @@ def utility_matrix_page():
         n = min(max_display, mat.shape[1])
         sampled = mat.sample(n=n, axis=1, random_state=42)
     else:
-        # Limitar a exibição se for muito grande
         if mat.shape[0] * mat.shape[1] > 100000:
             st.info(
                 "Matriz muito grande para renderizar completamente; escolha uma amostra ou aumente o limite."
@@ -535,7 +709,6 @@ def utility_matrix_page():
 
     st.dataframe(sampled)
 
-    # Heatmap
     if st.button("Gerar Heatmap"):
         try:
             fig, ax = plt.subplots(figsize=(10, 6))
@@ -544,7 +717,6 @@ def utility_matrix_page():
         except Exception as e:
             st.error(f"Erro ao gerar heatmap: {e}")
 
-    # Download CSV
     csv_buf = io.BytesIO()
     try:
         sampled.to_csv(csv_buf)
