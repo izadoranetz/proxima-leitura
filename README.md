@@ -72,7 +72,7 @@ pip install streamlit pandas scikit-learn numpy pillow seaborn matplotlib
 streamlit run src/app.py
 ```
 
-## 📖 Como Usar
+## 📖 Como Usar Interface
 
 1. Crie uma conta ou faça login
 2. Configure suas preferências de leitura:
